@@ -6,7 +6,7 @@
 
 |      | Hardware | Software | Remark |
 | ---- | -------- | -------- | ------ |
-| 1    | V2.0     | V1.0     | latest |
+| 1    | V3.0     | V3.0     | latest |
 
 ### 3, product information
 
