@@ -18,9 +18,9 @@
 - Screen: TFT-LCD Screen
 - Display driver: ILI6122 & ILI5960
 - External power supply: DC5V-2A
-- Interface: 2*UART0,2*GPIO,2*I2C,1*Battery
+- Interface: 2/*UART0,2/*GPIO,2/*I2C,1/*Battery
 - Button: BOOT Button and Reset Button
-- Active Area: 108*64.8mm(W*H)
+- Active Area: 108/*64.8mm(W/*H)
 - Working Temperature: -20℃～70℃
 - Storage Temperature: -30℃～80℃
 
