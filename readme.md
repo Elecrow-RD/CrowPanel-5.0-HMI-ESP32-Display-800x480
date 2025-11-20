@@ -6,7 +6,32 @@
 
 |      | Hardware | Software | Remark |
 | ---- | -------- | -------- | ------ |
+| 1    | V1.0     | V1.0     | old |
+| 1    | V2.0     | V2.0     | old |
 | 1    | V3.0     | V3.0     | latest |
+
+**Version 2.0** adds an automatic download feature over Version 1.0, eliminating the need to press boot+reset again before downloading the program.
+
+**Version 3.0** adds touch timing control based on Version 2.0 to prevent touch failures. When writing programs, you need to build upon the Version 2.0 program to implement the timing control logic.
+
+  PCA9557 Out;
+  
+  Out.reset();
+  
+  Out.setMode(IO_OUTPUT);  
+  
+  Out.setState(IO0, IO_LOW);
+  
+  Out.setState(IO1, IO_LOW);
+  
+  delay(20);
+  
+  Out.setState(IO0, IO_HIGH);
+  
+  delay(100);
+  
+  Out.setMode(IO1, IO_INPUT);
+
 
 ### 3, product information
 
