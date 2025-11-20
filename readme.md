@@ -14,9 +14,9 @@
 
 **Version 3.0** adds touch timing control based on Version 2.0 to prevent touch failures. When writing programs, you need to build upon the Version 2.0 program to implement the timing control logic.
 
-  PCA9557 Out;
+   PCA9557 Out;
   
-  Out.reset();
+   Out.reset();
   
   Out.setMode(IO_OUTPUT);  
   
