@@ -75,7 +75,7 @@ C:\Users\Documents\Arduino\libraries\
 
 3.Open the code configuration environment and burn it
 
-<img width="1012" height="715" alt="image" src="https://github.com/user-attachments/assets/9bb9e8c1-4d39-4751-b3ae-99c817971c4e" />
+<img width="504" height="905" alt="image" src="https://github.com/user-attachments/assets/14e0abd2-30f8-4905-a56e-23268f633223" />
 
 
 
