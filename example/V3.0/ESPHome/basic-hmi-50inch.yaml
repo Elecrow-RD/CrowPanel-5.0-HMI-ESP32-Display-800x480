@@ -1,0 +1,276 @@
+esphome:
+  name: basic-hmi-50inch                                     # Node name for the ESPHome device
+  friendly_name: Basic_HMI_5.0inch                           # Human-readable name for Home Assistant
+  platformio_options:                                        # Custom PlatformIO build configuration
+    build_flags: 
+      - "-DBOARD_HAS_PSRAM"                                  # Enable PSRAM support in compilation
+    board_build.esp-idf.memory_type: qio_opi                 # Set memory type for ESP-IDF framework
+    board_build.flash_mode: dio                              # Set SPI flash access mode to DIO
+
+  on_boot:                                                   # Actions to execute during boot phase
+    priority: 600                                            # High priority to run before most components
+    then: 
+      - lambda: |- 
+          uint8_t addr = 0x18;                               // PCA9557 I2C expander slave address
+          
+          uint8_t config[2] = {0x03, 0x00};                  // 1. Set all PCA9557 pins as outputs
+          id(bus_a).write(addr, config, 2);                  // Write configuration via I2C bus
+          
+          uint8_t output_low[2] = {0x01, 0x00};              // 2. IO0=LOW, IO1=LOW (Hard reset GT911)
+          id(bus_a).write(addr, output_low, 2);              // Apply low signals to reset pins
+          
+          delay(20);                                         // 3. Hold reset state for 20 milliseconds
+          
+          uint8_t output_high[2] = {0x01, 0x01};             // 4. IO0=HIGH (Release GT911 reset sequence)
+          id(bus_a).write(addr, output_high, 2);             // Apply high signal to wake up touch IC
+          
+          delay(100);                                        // 5. Wait 100ms for touch IC to initialize
+          
+          uint8_t config_input[2] = {0x03, 0x02};            // 6. Set IO1 as input for GT911 interrupt
+          id(bus_a).write(addr, config_input, 2);            // Finalize PCA9557 pin configuration
+
+esp32:                                                       # ESP32 specific hardware configuration
+  board: esp32s3box                                          # Base board model for ESP32-S3
+  framework: 
+    type: esp-idf                                            # Use official ESP-IDF framework, not Arduino
+    sdkconfig_options: 
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y                 # Set CPU frequency to max (240MHz)
+      CONFIG_ESP32S3_DATA_CACHE_64KB: y                      # Allocate 64KB for data cache
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: y                    # Allow instruction fetch from SPIRAM
+      CONFIG_SPIRAM_RODATA: y                                # Store read-only data in SPIRAM
+      CONFIG_SPIRAM_USE: y                                   # Enable external SPIRAM globally
+      CONFIG_SPIRAM_SPEED_80M: y                             # Set SPIRAM clock speed to 80MHz
+      CONFIG_SPIRAM_MODE_OCT: y                              # Use Octal mode for faster RAM access
+      CONFIG_ESP32S3_SPIRAM_SUPPORT: y                       # Enable ESP32-S3 specific SPIRAM support
+  variant: esp32s3                                           # Specify the chip variant exactly
+
+psram:                                                       # Physical PSRAM configuration block
+  mode: octal                                                # Octal SPI mode matches board layout
+  speed: 80MHz                                               # 80MHz speed matches sdkconfig options
+
+logger:                                                      # Enable serial console logging output
+
+api:                                                         # Enable Home Assistant native API
+  encryption:
+    key: "rtwa5RpA76iUnridsvbzfCTksdLVnCayR8emMERD458="      # Encryption key for secure API traffic
+
+ota:                                                         # Over-The-Air firmware update settings
+  - platform: esphome
+    password: "fe7be42dce2a55366a21117adbb7800a"             # Password required for OTA updates
+
+wifi:                                                        # Wi-Fi network connection settings
+  ssid: !secret wifi_ssid                                    # Main network SSID from secrets.yaml
+  password: !secret wifi_password                            # Main network password from secrets.yaml
+  ap:
+    ssid: "Basic-Hmi-50Inch"                                 # Fallback Access Point SSID if Wi-Fi fails
+    password: "CVoV1AXZmVRl"                                 # Fallback Access Point password
+
+captive_portal:                                              # Enable web portal when in AP mode
+
+output:                                                      # Hardware output definitions
+  - platform: ledc                                           # Use ESP32 LEDC hardware PWM controller
+    pin: 2                                                   # GPIO 2 controls the display backlight
+    frequency: 1220                                          # 1220 Hz PWM frequency prevents flickering
+    id: gpio_backlight_pwm                                   # Internal ID to link with light component
+
+light:                                                       # Light entities exposed to Home Assistant
+  - platform: monochromatic                                  # Single-color brightness-controlled light
+    output: gpio_backlight_pwm                               # Link to the PWM output defined above
+    name: Display Backlight                                  # Entity name shown in Home Assistant
+    id: back_light                                           # Internal ID for automation reference
+    restore_mode: ALWAYS_ON                                  # Ensure screen turns on after power loss
+
+switch:                                                      # Switch entities exposed to Home Assistant
+  - platform: gpio                                           # Basic GPIO toggle switch
+    pin: 38                                                  # Connected to physical GPIO 38
+    name: "LED Control"                                      # Entity name shown in Home Assistant
+    id: led_switch                                           # Internal ID for UI interaction
+
+image:                                                       # Local image assets for the LVGL UI
+  - file: "light.png"                                        # Local path to the light icon image
+    id: on_light                                             # Internal ID for LVGL to reference
+    resize: 52x52                                            # Resize image to exactly 52x52 pixels
+    type: RGB565                                             # Use 16-bit color format for performance
+  - file: "small_hum.png" 
+    id: small_hum 
+    resize: 50x76 
+    type: RGB565 
+  - file: "small_logo.png" 
+    id: small_logo 
+    resize: 250x52 
+    type: RGB565 
+    transparency: chroma_key                                 # Use chroma-keying for transparent background
+  - file: "small_off.png" 
+    id: small_off 
+    resize: 50x75 
+    type: RGB565 
+  - file: "small_temp.png" 
+    id: small_temp 
+    resize: 50x75 
+    type: RGB565 
+  - file: "no_light.png" 
+    id: no_light 
+    resize: 50x50 
+    type: RGB565 
+
+i2c:                                                         # I2C bus configuration for sensors/touch
+  sda: 19                                                    # GPIO 19 used for I2C Data (SDA)
+  scl: 20                                                    # GPIO 20 used for I2C Clock (SCL)
+  scan: true                                                 # Scan bus on boot to detect devices
+  id: bus_a                                                  # Internal ID for I2C bus reference
+
+display:                                                     # Display panel hardware configuration
+  - platform: rpi_dpi_rgb                                    # Parallel RGB interface driver
+    id: main_display                                         # Internal ID for LVGL to target
+    color_order: RGB                                         # Standard Red-Green-Blue color order
+    invert_colors: true                                      # Invert colors required by this panel
+    update_interval: never                                   # Frame updates are handled manually by LVGL
+    auto_clear_enabled: false                                # Prevent flickering by disabling auto-clear
+    dimensions: 
+      width: 800                                             # Display physical horizontal resolution
+      height: 480                                            # Display physical vertical resolution
+    de_pin: 40                                               # Data Enable pin
+    hsync_pin: 39                                            # Horizontal Synchronization pin
+    vsync_pin: 41                                            # Vertical Synchronization pin
+    pclk_pin: 0                                              # Pixel Clock pin
+    pclk_frequency: 16MHz                                    # Set pixel clock frequency to 16MHz
+    hsync_pulse_width: 4                                     # Horizontal sync timing parameter
+    hsync_front_porch: 8                                     # Horizontal front porch timing
+    hsync_back_porch: 43                                     # Horizontal back porch timing
+    vsync_pulse_width: 4                                     # Vertical sync timing parameter
+    vsync_front_porch: 8                                     # Vertical front porch timing
+    vsync_back_porch: 12                                     # Vertical back porch timing
+    data_pins: 
+      red: [45, 48, 47, 21, 14]                              # 5 pins allocated for the Red channel
+      green: [5, 6, 7, 15, 16, 4]                            # 6 pins allocated for the Green channel
+      blue: [8, 3, 46, 9, 1]                                 # 5 pins allocated for the Blue channel
+
+time:                                                        # Network time synchronization
+  - platform: sntp                                           # Simple Network Time Protocol client
+    id: time_comp                                            # Internal ID for time component
+
+sensor:                                                      # Hardware sensor definitions
+  - platform: aht10                                          # AHT10/20 temperature and humidity driver
+    i2c_id: bus_a                                            # Connect to the configured I2C bus_a
+    address: 0x38                                            # Default I2C address for AHT20
+    variant: AHT20                                           # Specify exact sensor model variant
+    temperature: 
+      name: "HMI-50 Temperature"                             # Entity name for temperature reading
+      id: temperature50                                      # Internal ID to read in LVGL UI
+    humidity: 
+      id: humidity50                                         # Internal ID to read in LVGL UI
+      name: "HMI-50 Humidity"                                # Entity name for humidity reading
+    update_interval: 5s                                      # Poll sensor data every 5 seconds
+
+touchscreen:                                                 # Touch digitizer configuration
+  platform: gt911                                            # Driver for Goodix GT911 controllers
+  id: my_touchscreen                                         # Internal ID for LVGL touch input
+  i2c_id: bus_a                                              # Connect to the configured I2C bus_a
+  display: main_display                                      # Link touch input to the main display
+  update_interval: 20ms                                      # Poll touch events every 20 milliseconds
+  transform: 
+    mirror_x: false                                          # Do not invert X-axis coordinates
+    mirror_y: false                                          # Do not invert Y-axis coordinates
+    swap_xy: false                                           # Do not swap X and Y axes
+
+binary_sensor:                                               # Virtual sensors based on touch events
+  - platform: touchscreen                                    # Define a specific touch zone as a button
+    name: "Light Touch Button"                               # Entity name for the virtual button
+    touchscreen_id: my_touchscreen                           # Link to the GT911 touchscreen
+    x_min: 150                                               # Left boundary of the touch zone (px)
+    x_max: 202                                               # Right boundary of the touch zone (px)
+    y_min: 300                                               # Top boundary of the touch zone (px)
+    y_max: 352                                               # Bottom boundary of the touch zone (px)
+    on_press:                                                # Action triggered when touched
+      then: 
+        - switch.toggle: led_switch                          # Toggle the GPIO38 LED switch
+
+lvgl:                                                        # LVGL (Graphics Library) UI layout
+  displays: 
+    - main_display                                           # Target display for UI rendering
+  touchscreens: 
+    - my_touchscreen                                         # Source for UI touch interactions
+  log_level: INFO                                            # Set LVGL internal logging verbosity
+  color_depth: 16                                            # Match image color depth (RGB565)
+  bg_color: 0xFFFFFF                                         # Set global background color to white
+  text_font: unscii_8                                        # Default font used if not specified
+  
+  widgets:                                                   # UI element definitions
+    - image: 
+        id: lvgl_logo                                        # Internal ID for the logo widget
+        src: small_logo                                      # Reference to loaded small_logo asset
+        x: 300                                               # X-axis position on screen (px)
+        y: 40                                                # Y-axis position on screen (px)
+    - image: 
+        id: lvgl_light                                       # Internal ID for the light icon widget
+        src: no_light                                        # Reference to loaded on_light asset
+        x: 150                                               # Match X position with touch zone
+        y: 300                                               # Match Y position with touch zone
+    - image: 
+        id: lvgl_temp                                        # Internal ID for the temperature icon widget
+        src: small_temp                                      # Reference to loaded temperature asset
+        x: 390                                               # X-axis position on screen (px)
+        y: 280                                               # Y-axis position on screen (px)
+    - image: 
+        id: lvgl_hum                                         # Internal ID for the humidity icon widget
+        src: small_hum                                       # Reference to loaded humidity asset
+        x: 630                                               # X-axis position on screen (px)
+        y: 280                                               # Y-axis position on screen (px)
+
+    - label: 
+        id: led_status                                       # Internal ID for LED text status
+        text_font: montserrat_24                             # Use larger, smoother Montserrat font
+        text: "OFF"                                          # Default starting text
+        x: 160                                               # X-axis position near the light icon
+        y: 400                                               # Y-axis position below the light icon
+    - label: 
+        id: tem                                              # Internal ID for temperature text value
+        text_font: montserrat_24                             # Use larger, smoother Montserrat font
+        text: 
+          format: "%.0f"                                     # Display value with no decimal places
+          args: ['id(temperature50).state']                  # Fetch live data from AHT20 sensor
+        x: 400                                               # X-axis position near temperature icon
+        y: 400                                               # Y-axis position below temperature icon
+    - label: 
+        id: hum                                              # Internal ID for humidity text value
+        text_font: montserrat_24                             # Use larger, smoother Montserrat font
+        text: 
+          format: "%.0f"                                     # Display value with no decimal places
+          args: ['id(humidity50).state']                     # Fetch live data from AHT20 sensor
+        x: 640                                               # X-axis position near humidity icon
+        y: 400                                               # Y-axis position below humidity icon
+
+    
+interval:                                                    # Recurring background tasks
+  - interval: 1s                                             # Run the following actions every 1 second
+    then: 
+      - lvgl.label.update:                                   # Action: Update LVGL widget text
+          id: hum                                            # Target the humidity text label
+          text: 
+            format: "%.1f"                                   # Format float to 1 decimal place
+            args: ['id(humidity50).state']                   # Retrieve current humidity value
+      - lvgl.label.update:                                   # Action: Update LVGL widget text
+          id: tem                                            # Target the temperature text label
+          text: 
+            format: "%.1f"                                   # Format float to 1 decimal place
+            args: ['id(temperature50).state']                # Retrieve current temperature value
+      - if:
+          condition:
+            switch.is_on: led_switch
+          then:
+            - lvgl.image.update:
+                id: lvgl_light
+                src: on_light
+
+            - lvgl.label.update:
+                id: led_status
+                text: "ON"
+
+          else:
+            - lvgl.image.update:
+                id: lvgl_light
+                src: no_light
+
+            - lvgl.label.update:
+                id: led_status
+                text: "OFF"
